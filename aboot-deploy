@@ -1,0 +1,82 @@
+#!/bin/bash
+
+set -eux
+
+usage() {
+    echo "Usage:"
+    echo "  aboot-deploy [OPTION...] ABOOT_IMG"
+    echo
+    echo "Options:"
+    echo "  -c,--config PATH        - Config files to read env vars from"
+    echo "  -d,--destination PATH   - Write image to this file/device (not in --root)"
+    echo "  -r,--root PATH          - The location for the root directory where images are stored"
+    echo
+}
+
+ABOOT_IMG=
+DESTINATION=
+ROOTDIR=
+ABOOT_CFG=
+
+echo "$0 $@"
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -c|--config)
+      ABOOT_CFG="$2"
+      shift 2
+      ;;
+    -d|--destination)
+      DESTINATION="$2"
+      shift 2
+      ;;
+    -r|--root)
+      ROOTDIR="$2"
+      shift 2
+      ;;
+    -*|--*)
+      usage
+      echo "Unknown option $1"
+      exit 1
+      ;;
+    *)
+      break;
+      ;;
+  esac
+done
+
+if [[ $# -lt 1 ]]; then
+    usage
+    echo "error: No aboot image specified"
+    exit 1
+fi
+
+ABOOT_IMG="$ROOTDIR/boot/$1"
+ABOOT_CFG="$ROOTDIR/$ABOOT_CFG"
+
+if [ -f "$ABOOT_CFG" ]; then
+    source "$ABOOT_CFG"
+fi
+
+if [ -z "$DESTINATION" ]; then
+    DESTINATION="$PARTITION"
+fi
+
+ABOOT_IMG_SIZE=$(stat --format="%s" $ABOOT_IMG)
+
+if ! [ -e "$DESTINATION" ]; then
+    # In osbuild we have to write manually another way, this script is for
+    # runtime during actual use on the deployed device
+    echo "Device not mounted in this environment, not writing via dd"
+    exit 0
+fi
+
+DESTINATION_SIZE=$(blockdev --getsize64 $DESTINATION)
+
+if [ "$ABOOT_IMG_SIZE" -gt "$DESTINATION_SIZE" ]; then
+    echo "File too large for device" >&2
+    exit 1
+fi
+
+dd if=$ABOOT_IMG of=$DESTINATION bs=4M status=progress conv=fsync
+

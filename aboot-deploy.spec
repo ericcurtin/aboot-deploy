@@ -6,6 +6,8 @@ Summary:        Deploy aboot
 License:        GPLv2+
 Source0:        aboot-deploy
 
+BuildArch:      noarch
+
 %description
 
 Aboot-deploy is a tool that given a aboot (Android) image, writes it to the

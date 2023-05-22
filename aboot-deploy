@@ -59,7 +59,7 @@ if [ -f "$ABOOT_CFG" ]; then
 fi
 
 if [ -z "$DESTINATION" ]; then
-    DESTINATION="$PARTITION"
+    DESTINATION="$PARTITION_A"
 fi
 
 ABOOT_IMG_SIZE=$(stat --format="%s" $ABOOT_IMG)
@@ -67,7 +67,8 @@ ABOOT_IMG_SIZE=$(stat --format="%s" $ABOOT_IMG)
 if ! [ -e "$DESTINATION" ]; then
     # In osbuild we have to write manually another way, this script is for
     # runtime during actual use on the deployed device
-    echo "Device not mounted in this environment, not writing via dd"
+    echo "Device not mounted in this environment, not writing via dd, devices mounted:"
+    ls -ltr /dev/disk/*/* || true # list mounted devices, to help debug this failure
     exit 0
 fi
 

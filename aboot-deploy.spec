@@ -1,6 +1,6 @@
 Name:           aboot-deploy
 Version:        0.1
-Release:        1%{?dist}
+Release:        2%{?dist}
 Summary:        Deploy aboot
 
 License:        GPLv2+
@@ -24,6 +24,9 @@ install -Dm755 %{SOURCE0} %{buildroot}%{_bindir}/aboot-deploy
 %{_bindir}/aboot-deploy
 
 %changelog
+* Wed Jan 11 2023 Eric Curtin <ecurtin@redhat.com>
+- Changed to take ab partitioning into account
+
 * Wed Jan 11 2023 Eric Curtin <ecurtin@redhat.com>
 - Added noarch, it's a shell script
 

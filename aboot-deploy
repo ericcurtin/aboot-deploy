@@ -7,14 +7,55 @@ usage() {
     echo "  aboot-deploy [OPTION...] ABOOT_IMG"
     echo
     echo "Options:"
-    echo "  -c,--config PATH        - Config files to read env vars from"
-    echo "  -d,--destination PATH   - Write image to this file/device (not in --root)"
-    echo "  -r,--root PATH          - The location for the root directory where images are stored"
+    echo "  -c,--config PATH      - Config files to read env vars from"
+    echo "  -d,--destination PATH - Write image to this target (not in --root)"
+    echo "  -r,--root PATH        - Location for the root directory"
     echo
+}
+
+get_karg_val() {
+    cmdline="$1"
+    key="$2"
+
+    echo "$cmdline" | sed "s/\s/\n/g" | grep -m1 "^$key=" | sed "s/^$key=//g"
+}
+
+set_active_slot() {
+    if [ "$NEW_SLOT" = "_a" ]; then
+        LINK="$LINK_A"
+        SLOT_NUM="0"
+    elif [ "$NEW_SLOT" = "_b" ]; then
+        LINK="$LINK_B"
+        SLOT_NUM="1"
+    else
+        echo "No valid new slot in set_active_slot: '$NEW_SLOT'"
+        exit 6
+    fi
+
+    PREFIX="/ostree/deploy"
+    REALPATH=$(realpath "${ROOTDIR}${OSTREE}" | sed "s#.*$PREFIX#deploy#")
+    if [ -e "$LINK" ]; then
+        rm "$LINK"
+    fi
+
+    ln -s "$REALPATH" "$LINK"
+    if $IS_OSBUILD; then
+        exit 0 # Appropriate flags set by osbuild
+    fi
+
+    if command -v abctl; then
+        abctl --set_active "$SLOT_NUM"
+    elif command -v qbootctl; then
+        qbootctl -s "$SLOT_NUM"
+    else
+        echo "No valid ab switching executable"
+        exit 7
+    fi
 }
 
 ABOOT_IMG=
 DESTINATION=
+OPTIONS=
 ROOTDIR=
 ABOOT_CFG=
 
@@ -28,6 +69,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     -d|--destination)
       DESTINATION="$2"
+      shift 2
+      ;;
+    -o|--options)
+      OPTIONS="$2"
       shift 2
       ;;
     -r|--root)
@@ -48,7 +93,7 @@ done
 if [[ $# -lt 1 ]]; then
     usage
     echo "error: No aboot image specified"
-    exit 1
+    exit 2
 fi
 
 ABOOT_IMG="$ROOTDIR/boot/$1"
@@ -58,8 +103,43 @@ if [ -f "$ABOOT_CFG" ]; then
     source "$ABOOT_CFG"
 fi
 
+OSTREE=$(get_karg_val "$OPTIONS" "ostree")
+if [[ $OSTREE != /ostree* ]]; then
+    echo "No valid ostree target in '$OPTIONS'"
+    exit 3
+fi
+
+CMDLINE="$(cat /proc/cmdline)"
+SLOT=$(get_karg_val "$CMDLINE" "androidboot.slot_suffix")
+LINK_A="$ROOTDIR/ostree/root.a"
+LINK_B="$ROOTDIR/ostree/root.b"
+NEW_SLOT=
+IS_OSBUILD="false"
+
+if [ ! -e "$LINK_A" ] && [ ! -e "$LINK_B" ]; then
+    echo "No links found, assuming osbuild"
+    IS_OSBUILD="true"
+    NEW_SLOT="_a"
+    set_active_slot
+    exit 0
+elif [ "$SLOT" = "_a" ]; then
+    NEW_SLOT="_b"
+elif [ "$SLOT" = "_b" ]; then
+    NEW_SLOT="_a"
+else
+    echo "No valid slot in: '$CMDLINE'"
+    exit 4
+fi
+
 if [ -z "$DESTINATION" ]; then
-    DESTINATION="$PARTITION_A"
+    if [ "$NEW_SLOT" = "_a" ]; then
+        DESTINATION="$PARTITION_A"
+    elif [ "$NEW_SLOT" = "_b" ]; then
+        DESTINATION="$PARTITION_B"
+    else
+        echo "No valid new slot: '$NEW_SLOT'"
+        exit 8
+    fi
 fi
 
 ABOOT_IMG_SIZE=$(stat --format="%s" $ABOOT_IMG)
@@ -67,17 +147,23 @@ ABOOT_IMG_SIZE=$(stat --format="%s" $ABOOT_IMG)
 if ! [ -e "$DESTINATION" ]; then
     # In osbuild we have to write manually another way, this script is for
     # runtime during actual use on the deployed device
-    echo "Device not mounted in this environment, not writing via dd, devices mounted:"
-    ls -ltr /dev/disk/*/* || true # list mounted devices, to help debug this failure
-    exit 0
+    echo "No destination, not writing via dd, devices mounted:"
+
+set +e
+    ls -ltr /dev/disk/*/* # list mounted devices, to help debug this failure
+set -e
+
+    exit 5
 fi
 
-DESTINATION_SIZE=$(blockdev --getsize64 $DESTINATION)
+DEST_SIZE=$(blockdev --getsize64 $DESTINATION)
 
-if [ "$ABOOT_IMG_SIZE" -gt "$DESTINATION_SIZE" ]; then
-    echo "File too large for device" >&2
-    exit 1
+if [ "$ABOOT_IMG_SIZE" -gt "$DEST_SIZE" ]; then
+    echo "File too large, size: '$ABOOT_IMG_SIZE' dest size: '$DEST_SIZE'"
+    exit 9
 fi
 
-dd if=$ABOOT_IMG of=$DESTINATION bs=4M status=progress conv=fsync
+dd if=$ABOOT_IMG of=$DESTINATION status=progress conv=fsync
+
+set_active_slot
 

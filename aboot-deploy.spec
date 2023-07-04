@@ -1,6 +1,6 @@
 Name:           aboot-deploy
-Version:        0.1
-Release:        3%{?dist}
+Version:        0.2
+Release:        1%{?dist}
 Summary:        Deploy aboot
 
 License:        GPLv2+
@@ -24,6 +24,11 @@ install -Dm755 %{SOURCE0} %{buildroot}%{_bindir}/aboot-deploy
 %{_bindir}/aboot-deploy
 
 %changelog
+
+* Sun Jul 16 2023 Eric Curtin <ecurtin@redhat.com>
+- In the presence of no AB switching tool, allow single slot upgrades
+- selinux fix, change of label
+
 * Mon Jun 26 2023 Eric Curtin <ecurtin@redhat.com>
 - Integrate abctl/qbootctl
 

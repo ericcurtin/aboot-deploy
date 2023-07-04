@@ -39,17 +39,13 @@ set_active_slot() {
     fi
 
     ln -s "$REALPATH" "$LINK"
+    chcon -h system_u:object_r:root_t:s0 "$LINK"
     if $IS_OSBUILD; then
         exit 0 # Appropriate flags set by osbuild
     fi
 
-    if command -v abctl; then
-        abctl --set_active "$SLOT_NUM"
-    elif command -v qbootctl; then
-        qbootctl -s "$SLOT_NUM"
-    else
-        echo "No valid ab switching executable"
-        exit 7
+    if [ -n "$ABTOOLCMD" ]; then
+        $ABTOOLCMD "$SLOT_NUM"
     fi
 }
 
@@ -117,17 +113,31 @@ NEW_SLOT=
 IS_OSBUILD="false"
 
 if [ ! -e "$LINK_A" ] && [ ! -e "$LINK_B" ]; then
-    echo "No links found, assuming osbuild"
+    echo "No symlinks found, assuming osbuild"
     IS_OSBUILD="true"
     NEW_SLOT="_a"
     set_active_slot
     exit 0
+fi
+
+SINGLE_SLOT_MODE="false"
+ABTOOLCMD=
+if command -v abctl; then
+    ABTOOLCMD="abctl --set_active"
+elif command -v qbootctl; then
+    ABTOOLCMD="qbootctl -s"
+else
+    SINGLE_SLOT_MODE="true"
+    echo "Warning: No valid ab switching executable, proceeding in single-slot"
+    echo "         mode with slot a."
+fi
+
+if $SINGLE_SLOT_MODE || [ "$SLOT" = "_b" ]; then
+    NEW_SLOT="_a"
 elif [ "$SLOT" = "_a" ]; then
     NEW_SLOT="_b"
-elif [ "$SLOT" = "_b" ]; then
-    NEW_SLOT="_a"
 else
-    echo "No valid slot in: '$CMDLINE'"
+    echo "No valid slot in: '$CMDLINE' and not in single-slot mode"
     exit 4
 fi
 
